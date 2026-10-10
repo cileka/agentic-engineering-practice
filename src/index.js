@@ -1,7 +1,8 @@
 const express = require('express');
-const { PORT } = require('../misc/constants');
+const { PORT } = require('./config');
 const router = require('../routes');
-const { requestLogger, errorHandler } = require('../middleware');
+const { requestLogger } = require('./middleware/request-logger');
+const { errorHandler } = require('./middleware/error-handler');
 
 const app = express();
 
