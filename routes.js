@@ -12,7 +12,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { db } = require('./DB');
+const { db } = require('./src/db/connection');
 const { authenticate } = require('./auth');
 const UserController = require('./UserController');
 const { getTasks, getTaskById } = require('./get-tasks');
