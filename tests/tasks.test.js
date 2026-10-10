@@ -15,136 +15,213 @@ beforeEach(() => {
   db.prepare('INSERT INTO projects (id, name) VALUES (1, ?)').run('Test Project');
 });
 
+function insertTask(title, fields = {}) {
+  const { status = 'active', project_id = null, assignee_id = null } = fields;
+  return db.prepare(
+    'INSERT INTO tasks (title, status, project_id, assignee_id) VALUES (?, ?, ?, ?)'
+  ).run(title, status, project_id, assignee_id).lastInsertRowid;
+}
+
+function countTasks() {
+  return db.prepare('SELECT COUNT(*) AS n FROM tasks').get().n;
+}
+
 describe('GET /tasks', () => {
-  test('returns empty array when no tasks', async () => {
+  test('returns an empty list when there are no tasks', async () => {
     const res = await request(app).get('/tasks');
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
   });
 
-  test('returns all tasks', async () => {
-    db.prepare("INSERT INTO tasks (title, status) VALUES ('Task A', 'active')").run();
-    db.prepare("INSERT INTO tasks (title, status) VALUES ('Task B', 'completed')").run();
+  test('returns every task', async () => {
+    insertTask('Task A');
+    insertTask('Task B', { status: 'completed' });
     const res = await request(app).get('/tasks');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
   });
 
-  test('filters by ?status=active', async () => {
-    db.prepare("INSERT INTO tasks (title, status) VALUES ('Active Task', 'active')").run();
-    db.prepare("INSERT INTO tasks (title, status) VALUES ('Done Task', 'completed')").run();
+  test('returns only active tasks when filtered by status', async () => {
+    insertTask('Active Task');
+    insertTask('Done Task', { status: 'completed' });
     const res = await request(app).get('/tasks?status=active');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0].title).toBe('Active Task');
   });
 
-  test('filters by ?status=completed', async () => {
-    db.prepare("INSERT INTO tasks (title, status) VALUES ('Active Task', 'active')").run();
-    db.prepare("INSERT INTO tasks (title, status) VALUES ('Done Task', 'completed')").run();
+  test('returns only completed tasks when filtered by status', async () => {
+    insertTask('Active Task');
+    insertTask('Done Task', { status: 'completed' });
     const res = await request(app).get('/tasks?status=completed');
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0].title).toBe('Done Task');
   });
 
-  test('returns 400 for invalid status value', async () => {
+  test('returns only tasks in the given project', async () => {
+    insertTask('Task in project', { project_id: 1 });
+    insertTask('Unassigned task');
+    const res = await request(app).get('/tasks?project_id=1');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe('Task in project');
+  });
+
+  test('returns only tasks assigned to the given user', async () => {
+    insertTask('Mine', { assignee_id: 1 });
+    insertTask('Nobody\'s');
+    const res = await request(app).get('/tasks?assignee_id=1');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe('Mine');
+  });
+
+  test('returns one page of tasks at a time', async () => {
+    for (let i = 1; i <= 5; i++) insertTask(`Task ${i}`);
+    const page1 = await request(app).get('/tasks?page=1&page_size=2');
+    const page3 = await request(app).get('/tasks?page=3&page_size=2');
+    expect(page1.status).toBe(200);
+    expect(page1.body).toHaveLength(2);
+    expect(page3.body).toHaveLength(1);
+  });
+
+  test('rejects an unknown status filter', async () => {
     const res = await request(app).get('/tasks?status=invalid');
     expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
+  });
+
+  test('rejects a status filter in the wrong case', async () => {
+    const res = await request(app).get('/tasks?status=ACTIVE');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
   });
 });
 
 describe('POST /tasks', () => {
-  test('creates a task with valid data', async () => {
+  test('creates an active task and returns it', async () => {
     const res = await request(app)
       .post('/tasks')
       .send({ title: 'New Task', description: 'Do the thing' });
     expect(res.status).toBe(201);
     expect(res.body.title).toBe('New Task');
+    expect(res.body.description).toBe('Do the thing');
     expect(res.body.status).toBe('active');
     expect(res.body.id).toBeDefined();
   });
 
-  test('creates a task assigned to a project', async () => {
+  test('creates a task in a project with an assignee', async () => {
     const res = await request(app)
       .post('/tasks')
-      .send({ title: 'Project Task', project_id: 1 });
+      .send({ title: 'Project Task', project_id: 1, assignee_id: 1 });
     expect(res.status).toBe(201);
     expect(res.body.project_id).toBe(1);
+    expect(res.body.assignee_id).toBe(1);
   });
 
-  test('returns 400 when title is missing', async () => {
-    const res = await request(app)
-      .post('/tasks')
-      .send({ description: 'No title here' });
+  test('rejects a task with no title', async () => {
+    const res = await request(app).post('/tasks').send({ description: 'No title here' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
+    expect(countTasks()).toBe(0);
   });
 
-  test('returns 400 when title is empty string', async () => {
-    const res = await request(app)
-      .post('/tasks')
-      .send({ title: '   ' });
+  test('rejects a task with a blank title', async () => {
+    const res = await request(app).post('/tasks').send({ title: '   ' });
     expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
+    expect(countTasks()).toBe(0);
+  });
+
+  test('rejects a task in a project that does not exist', async () => {
+    const res = await request(app).post('/tasks').send({ title: 'Orphan', project_id: 999 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
+    expect(countTasks()).toBe(0);
+  });
+
+  test('rejects a task assigned to a user who does not exist', async () => {
+    const res = await request(app).post('/tasks').send({ title: 'Orphan', assignee_id: 999 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
+    expect(countTasks()).toBe(0);
   });
 });
 
 describe('GET /tasks/:id', () => {
-  test('returns task by id', async () => {
-    const result = db.prepare("INSERT INTO tasks (title) VALUES ('Find Me')").run();
-    const res = await request(app).get(`/tasks/${result.lastInsertRowid}`);
+  test('returns a task with its tags and comments', async () => {
+    const taskId = insertTask('Find Me');
+    const tagId = db.prepare("INSERT INTO tags (name) VALUES ('urgent')").run().lastInsertRowid;
+    db.prepare('INSERT INTO task_tags (task_id, tag_id) VALUES (?, ?)').run(taskId, tagId);
+    db.prepare('INSERT INTO comments (task_id, user_id, body) VALUES (?, 1, ?)').run(taskId, 'On it');
+
+    const res = await request(app).get(`/tasks/${taskId}`);
     expect(res.status).toBe(200);
     expect(res.body.title).toBe('Find Me');
-    expect(res.body.tags).toBeDefined();
-    expect(res.body.comments).toBeDefined();
+    expect(res.body.tags.map(t => t.name)).toEqual(['urgent']);
+    expect(res.body.comments).toHaveLength(1);
+    expect(res.body.comments[0].body).toBe('On it');
+    expect(res.body.comments[0].user_name).toBe('Test User');
   });
 
-  test('returns 404 for unknown id', async () => {
+  test('returns not found for an unknown task', async () => {
     const res = await request(app).get('/tasks/99999');
     expect(res.status).toBe(404);
+    expect(res.body.error).toBeDefined();
+  });
+
+  test('returns not found for a non-numeric id', async () => {
+    const res = await request(app).get('/tasks/abc');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBeDefined();
   });
 });
 
 describe('PUT /tasks/:id', () => {
-  test('updates task status to completed', async () => {
-    const result = db.prepare("INSERT INTO tasks (title, status) VALUES ('Update Me', 'active')").run();
-    const taskId = result.lastInsertRowid;
-    const res = await request(app)
-      .put(`/tasks/${taskId}`)
-      .send({ status: 'completed' });
+  test('records when a task was completed', async () => {
+    const taskId = insertTask('Update Me');
+    const res = await request(app).put(`/tasks/${taskId}`).send({ status: 'completed' });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('completed');
     expect(res.body.completed_at).not.toBeNull();
   });
 
-  test('updates task title', async () => {
-    const result = db.prepare("INSERT INTO tasks (title) VALUES ('Old Title')").run();
-    const taskId = result.lastInsertRowid;
-    const res = await request(app)
-      .put(`/tasks/${taskId}`)
-      .send({ title: 'New Title' });
+  test('clears the completion time when a task is reopened', async () => {
+    const taskId = insertTask('Reopen Me');
+    await request(app).put(`/tasks/${taskId}`).send({ status: 'completed' });
+    const res = await request(app).put(`/tasks/${taskId}`).send({ status: 'active' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('active');
+    expect(res.body.completed_at).toBeNull();
+  });
+
+  test('updates the title and keeps the rest', async () => {
+    const taskId = insertTask('Old Title', { project_id: 1 });
+    const res = await request(app).put(`/tasks/${taskId}`).send({ title: 'New Title' });
     expect(res.status).toBe(200);
     expect(res.body.title).toBe('New Title');
+    expect(res.body.project_id).toBe(1);
   });
 
-  test('returns 404 for unknown id', async () => {
+  test('returns not found for an unknown task', async () => {
     const res = await request(app).put('/tasks/99999').send({ title: 'Ghost' });
     expect(res.status).toBe(404);
+    expect(res.body.error).toBeDefined();
   });
 
-  test('returns 400 for invalid status', async () => {
-    const result = db.prepare("INSERT INTO tasks (title) VALUES ('Status Test')").run();
-    const res = await request(app)
-      .put(`/tasks/${result.lastInsertRowid}`)
-      .send({ status: 'bogus' });
+  test('rejects an unknown status', async () => {
+    const taskId = insertTask('Status Test');
+    const res = await request(app).put(`/tasks/${taskId}`).send({ status: 'bogus' });
     expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
+    expect(db.prepare('SELECT status FROM tasks WHERE id = ?').get(taskId).status).toBe('active');
   });
 });
 
 describe('DELETE /tasks/:id', () => {
-  test('deletes a task', async () => {
-    const result = db.prepare("INSERT INTO tasks (title) VALUES ('Delete Me')").run();
-    const taskId = result.lastInsertRowid;
+  test('removes the task', async () => {
+    const taskId = insertTask('Delete Me');
     const res = await request(app).delete(`/tasks/${taskId}`);
     expect(res.status).toBe(200);
     expect(res.body.deleted).toBe(true);
@@ -153,8 +230,15 @@ describe('DELETE /tasks/:id', () => {
     expect(check.status).toBe(404);
   });
 
-  test('returns 404 when task does not exist', async () => {
+  test('returns not found for an unknown task', async () => {
     const res = await request(app).delete('/tasks/99999');
     expect(res.status).toBe(404);
+    expect(res.body.error).toBeDefined();
+  });
+
+  test('returns not found for a non-numeric id', async () => {
+    const res = await request(app).delete('/tasks/abc');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBeDefined();
   });
 });
