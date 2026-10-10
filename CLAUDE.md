@@ -10,7 +10,7 @@ Taskr API — a REST API for task management (users, projects, tasks, comments, 
 
 - **Never put SQL in `src/routes/` or `src/services/`.** Routes call services; services call `src/db/queries/`. Only query modules touch `db`.
 - **Never put business logic or validation in route handlers.** Handlers read the request, call one service function, and send the response.
-- **Never name files in camelCase or PascalCase.** Every file under `src/` and `tests/` is kebab-case.
+- **Never name files in camelCase or PascalCase.** See Naming Conventions below.
 
 ## Context Files
 
@@ -32,24 +32,43 @@ npx jest tests/tasks.test.js                              # single file
 npx jest -t "returns only active tasks when filtered"     # single test by name
 ```
 
-## Architecture
+## Folder Structure
 
 ```
 src/
-  index.js          builds + exports the app; mounts routers; listens only when run directly
-  config.js         PORT
-  routes/           one Express router per resource, named <resources>Router
-  services/         validation, business rules, side effects (email); throw httpError(status, msg)
+  index.js            builds + exports the app; mounts routers; listens only when run directly
+  config.js           PORT
+  routes/             one Express router per resource: users, projects, tasks, comments, tags, meta, webhooks
+  services/           validation, business rules, side effects: users, projects, tasks, comments, tags, email
   db/
-    connection.js   the shared better-sqlite3 connection
-    schema.js       createSchema(db), the only copy of the DDL (used by seed.js and tests)
-    seed.js         sample data for taskr.db
-    queries/        thin prepared-statement wrappers per resource
-  middleware/       auth, request-logger, error-handler
-  utils/            constants (VALID_TASK_STATUSES), validation, http-error
+    connection.js     the single shared better-sqlite3 connection
+    schema.js         createSchema(db), the only copy of the DDL (used by seed.js and tests)
+    seed.js           sample data for taskr.db
+    queries/          prepared-statement wrappers: users, projects, tasks, comments, tags
+  middleware/         auth.js, request-logger.js, error-handler.js
+  utils/              constants.js (VALID_TASK_STATUSES), validation.js, http-error.js
+tests/                <resource>.test.js, one per resource
 ```
 
-- Request flow: `routes/<resource>.js` → `services/<resource>.js` → `db/queries/<resource>.js`. A service may call other resources' query modules (e.g. `services/tasks.js` checks `queries/projects.js`), but routes never call queries.
+Each layer only calls the layer directly below it:
+
+```
+routes/<resources>.js  →  services/<resources>.js  →  db/queries/<resources>.js  →  db/connection.js
+```
+
+- **Routes** read `req.params` / `req.query` / `req.body`, call one service function, and send the response. They never import from `db/`.
+- **Services** hold validation, business rules and side effects, and call query modules. They never use `db` directly. A service may call another resource's query module (e.g. `services/tasks.js` checks `db/queries/projects.js`).
+- **Queries** are thin `db.prepare(...)` wrappers over the shared connection, with no HTTP status codes or business logic.
+
+## Naming Conventions
+
+- All files use **kebab-case** (e.g. `error-handler.js`, `http-error.js`, `request-logger.js`). No camelCase, PascalCase or snake_case file names.
+- Route, service and query files are named after the resource in lowercase plural (`routes/tasks.js`, `services/tasks.js`, `db/queries/tasks.js`). The folder identifies the layer, so there are no `-service` / `-controller` suffixes.
+- Routers are exported by name as `<resources>Router` (e.g. `{ tasksRouter }`).
+- Test files are `tests/<resource>.test.js`.
+
+## Architecture Notes
+
 - Errors: services `throw httpError(status, message)`; handlers pass them to `next(err)`; `middleware/error-handler.js` sends `{ error: message }` with that status (500 by default) and logs only 5xx errors.
 - Mount points (`src/index.js`): `/` and `/health` (meta), `/webhooks`, `/users`, `/projects`, `/tasks`, `/tasks/:taskId/comments`, `/tasks/:taskId/tags` (`taskTagsRouter`), `/tags`. Nested routers use `mergeParams: true`.
 - `db/connection.js`: WAL, foreign keys on. `NODE_ENV=test` → `:memory:`; otherwise `DB_PATH` or `taskr.db`.
