@@ -19,12 +19,6 @@ const { getTasks, getTaskById } = require('./get-tasks');
 const { validateEmail, isNonEmptyString } = require('./src/utils/validation');
 const { VALID_TASK_STATUSES } = require('./src/utils/constants');
 
-// ─── Health ──────────────────────────────────────────────────────────────────
-
-router.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
 // ─── Users ───────────────────────────────────────────────────────────────────
 //
 // User routes delegate to UserController, which is inconsistent with every
