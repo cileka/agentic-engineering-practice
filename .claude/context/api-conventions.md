@@ -1,6 +1,6 @@
 # API Conventions: Adding a New Endpoint
 
-How to add a new API endpoint to the Taskr API. These conventions describe the target structure after the refactor. Do not add to `routes.js` or copy the patterns in it (inline SQL, inline validation, business logic in handlers).
+How to add a new API endpoint to the Taskr API. Requests flow `src/routes/` → `src/services/` → `src/db/queries/`; each layer only calls the one below it.
 
 ## 1. Route file: `src/routes/<resources>.js`
 
@@ -29,7 +29,7 @@ Every route handler calls a corresponding function in `src/services/` and holds 
 2. calls the service function
 3. sends the response status and JSON
 
-Database queries, validation rules, and side effects such as emails belong in the service, never in the handler.
+Validation rules and side effects such as emails belong in the service, never in the handler. SQL belongs in `src/db/queries/<resources>.js` (thin `db.prepare(...)` wrappers with no HTTP or business logic), which the service calls. Services never touch `db` directly.
 
 ```js
 tagsRouter.get('/:id', async (req, res, next) => {
@@ -82,7 +82,7 @@ Add tests in `tests/<resource>.test.js`, following the setup pattern described i
 
 - [ ] `src/routes/<resources>.js` exports a named `<resources>Router`
 - [ ] Handlers only call `src/services/` functions and don't contain business logic
+- [ ] SQL lives only in `src/db/queries/<resources>.js`, called from the service
 - [ ] Errors are passed to `next({ status, message })`
 - [ ] Router registered in `src/index.js` with `app.use('/<resources>', <resources>Router)`
-- [ ] Nothing added to `routes.js`, and nothing imported from `misc/`
 - [ ] Tests added in `tests/<resource>.test.js`

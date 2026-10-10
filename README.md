@@ -19,6 +19,25 @@ The server starts on port 3000. Visit `http://localhost:3000/health` to confirm 
 
 ---
 
+## Project structure
+
+```
+src/
+  index.js        app setup and router mounting
+  routes/         one router per resource; handlers call services
+  services/       validation and business rules; call db/queries
+  db/
+    connection.js shared SQLite connection
+    schema.js     table definitions (used by seed and tests)
+    seed.js       sample data
+    queries/      SQL per resource
+  middleware/     auth, request logging, error handling
+  utils/          constants, validation, http-error helper
+tests/            <resource>.test.js per resource
+```
+
+---
+
 ## Resources
 
 | Resource | Base path |

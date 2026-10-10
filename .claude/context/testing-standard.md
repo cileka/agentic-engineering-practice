@@ -5,7 +5,6 @@ How to write tests for the Taskr API.
 ## 1. File naming: `tests/<resource>.test.js`
 
 - One test file per resource, named `<resource>.test.js` in **lowercase**, e.g. `tests/tags.test.js`, `tests/comments.test.js`.
-- Don't copy the existing inconsistent names (`userTest.js`, `test-projects.js`). They are a known problem that will be standardized.
 - Jest picks up `*.test.js` files automatically, so a new file needs no `package.json` change.
 
 ## 2. Jest + supertest against in-memory SQLite
@@ -13,12 +12,12 @@ How to write tests for the Taskr API.
 Tests use Jest and supertest against an in-memory SQLite database, so no external setup is required. Every test file starts with this setup:
 
 ```js
-process.env.NODE_ENV = 'test'; // must come first: makes DB.js use ':memory:'
+process.env.NODE_ENV = 'test'; // must come first: makes src/db/connection.js use ':memory:'
 
 const request = require('supertest');
-const app = require('../index');
-const { db } = require('../DB');
-const { createSchema } = require('./schema');
+const app = require('../src/index');
+const { db } = require('../src/db/connection');
+const { createSchema } = require('../src/db/schema');
 
 beforeAll(() => {
   createSchema(db);
@@ -31,8 +30,8 @@ beforeEach(() => {
 });
 ```
 
-- Set `NODE_ENV` **before** requiring `../index` or `../DB`, or the tests will hit the real `taskr.db` file.
-- Create the schema with `tests/schema.js`. Don't rely on `taskr.db`, `npm run db:seed`, or seed data.
+- Set `NODE_ENV` **before** requiring `../src/index` or `../src/db/connection`, or the tests will hit the real `taskr.db` file.
+- Create the schema with `src/db/schema.js`. Don't rely on `taskr.db`, `npm run db:seed`, or seed data.
 - Send requests through `request(app)`. Never start a server with `app.listen`.
 - Each test builds its own data with `db.prepare(...)` or API calls, and must not depend on another test having run first.
 
