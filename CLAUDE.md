@@ -14,6 +14,13 @@ This codebase has intentional structural problems (misplaced helpers, circular d
 - **Never add new utility functions to `utils.js`** without first checking whether they belong in a more specific module.
 - **Never import from files in the `misc/` directory.** That code is dead and scheduled for removal.
 
+## Context Files
+
+Read the relevant file before starting these tasks:
+
+- `.claude/context/api-conventions.md`: any task involving API routes or endpoints.
+- `.claude/context/testing-standard.md`: any task involving tests or test coverage.
+
 ## Commands
 
 ```bash
