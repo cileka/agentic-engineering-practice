@@ -7,6 +7,7 @@ const { webhooksRouter } = require('./routes/webhooks');
 const { usersRouter } = require('./routes/users');
 const { projectsRouter } = require('./routes/projects');
 const { tasksRouter } = require('./routes/tasks');
+const { commentsRouter } = require('./routes/comments');
 const router = require('../routes');
 
 const app = express();
@@ -19,6 +20,7 @@ app.use('/webhooks', webhooksRouter);
 app.use('/users', usersRouter);
 app.use('/projects', projectsRouter);
 app.use('/tasks', tasksRouter);
+app.use('/tasks/:taskId/comments', commentsRouter);
 app.use(router);
 
 app.use(errorHandler);
